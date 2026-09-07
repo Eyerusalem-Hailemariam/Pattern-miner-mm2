@@ -19,32 +19,32 @@
     (pure (gv-var-check $id $path $node $is-var) $is-var
       (i8_to_string (is_var (' $node))))
 
-    (+ (exec (freq f030 gv-record)
+    (+ (exec (freq 030 gv-record)
          (, (gv-var-check $record-id $record-path $var-node 1))
          (O
            (- (gv-var-check $record-id $record-path $var-node 1))
            (+ (get-vars-for-tree-result $record-id $record-path $var-node)))))
 
-    (+ (exec (freq f031 gv-split-pair)
+    (+ (exec (freq 031 gv-split-pair)
          (, (gv-var-check $split-id $split-path ($a $b) 0)
             (DEF gv-expand $expand-p $expand-t))
          (O
            (- (gv-var-check $split-id $split-path ($a $b) 0))
-           (+ (gv-visit $split-id ($split-path arg/0) $a))
-           (+ (gv-visit $split-id ($split-path arg/1) $b))
-           (+ (exec (freq f020 gv-expand) $expand-p $expand-t)))))
+           (+ (gv-visit $split-id ($split-path (arg 0)) $a))
+           (+ (gv-visit $split-id ($split-path (arg 1)) $b))
+           (+ (exec (freq 020 gv-expand) $expand-p $expand-t)))))
 
-    (+ (exec (freq f032 gv-split-triplet)
+    (+ (exec (freq 032 gv-split-triplet)
          (, (gv-var-check $split-id $split-path ($a $b $c) 0)
             (DEF gv-expand $expand-p $expand-t))
          (O
            (- (gv-var-check $split-id $split-path ($a $b $c) 0))
-           (+ (gv-visit $split-id ($split-path arg/0) $a))
-           (+ (gv-visit $split-id ($split-path arg/1) $b))
-           (+ (gv-visit $split-id ($split-path arg/2) $c))
-           (+ (exec (freq f020 gv-expand) $expand-p $expand-t)))))
+           (+ (gv-visit $split-id ($split-path (arg 0)) $a))
+           (+ (gv-visit $split-id ($split-path (arg 1)) $b))
+           (+ (gv-visit $split-id ($split-path (arg 2)) $c))
+           (+ (exec (freq 020 gv-expand) $expand-p $expand-t)))))
 
-    (+ (exec (freq f039 gv-discard-non-var)
+    (+ (exec (freq 039 gv-discard-non-var)
          (, (gv-var-check $discard-id $discard-path $node 0))
          (O
            (- (gv-var-check $discard-id $discard-path $node 0)))))
@@ -57,7 +57,7 @@
 ;   (get-vars-for-tree $id $tree)
 ;   (DEF get-vars-for-tree-fn $gv-p $gv-t)
 ; then emit:
-;   (+ (exec (freq f010 run-get-vars) $gv-p $gv-t))
+;   (+ (exec (freq 010 run-get-vars) $gv-p $gv-t))
 (DEF get-vars-for-tree-fn
   (, (get-vars-for-tree $id $tree)
      (DEF gv-expand $expand-p $expand-t))
@@ -65,23 +65,23 @@
     (- (get-vars-for-tree $id $tree))
     (pure (gv-visit $id root $indexed-tree) $indexed-tree
       (vars_to_indices (' $tree)))
-    (+ (exec (freq f020 gv-expand) $expand-p $expand-t)))
+    (+ (exec (freq 020 gv-expand) $expand-p $expand-t)))
 )
 
 ; Example call, kept inactive so this file can be loaded as a library:
 ; (get-vars-for-tree sample (Inheritance $x (Evaluation $x $y)))
-; (exec (freq f000 call-get-vars-example)
+; (exec (freq 000 call-get-vars-example)
 ;   (, (get-vars-for-tree sample (Inheritance $x (Evaluation $x $y)))
 ;      (DEF get-vars-for-tree-fn $gv-p $gv-t))
-;   (O (+ (exec (freq f010 run-get-vars) $gv-p $gv-t))))
+;   (O (+ (exec (freq 010 run-get-vars) $gv-p $gv-t))))
 
 ; get-value-at-position
 ;
 ; Recursive positional lookup. It walks only the requested path:
 ;   root                      -> the whole expression
-;   ($parent arg/0)           -> first child of value at $parent
-;   ($parent arg/1)           -> second child of value at $parent
-;   ($parent arg/2)           -> third child of value at $parent
+;   ($parent (arg 0))         -> first child of value at $parent
+;   ($parent (arg 1))         -> second child of value at $parent
+;   ($parent (arg 2))         -> third child of value at $parent
 ;
 ; Request:
 ;   (get-value-at-position $id $expr $path)
@@ -94,26 +94,23 @@
 ;   (gap-wait $id $path $parent $arg)
 ;   (gap-value $id $path $value)
 
-(gap-arg-index arg/0 0)
-(gap-arg-index arg/1 1)
-(gap-arg-index arg/2 2)
-
 (DEF get-value-at-position-select
   (, (gap-value $id $parent $parent-value))
   (O
-    (+ (exec (freq f130 gap-select-by-index)
-         (, (gap-wait $sel-id $path $parent $arg)
-            (gap-value $sel-id $parent $parent-value)
-            (gap-arg-index $arg $index)
-            (DEF get-value-at-position-select $select-rule-p $select-rule-t))
+    ; Keep variables in generated nested rules distinct from the outer rule.
+    ; Otherwise substitution can capture them and multiply the join work.
+    (+ (exec (freq 130 gap-select-by-index)
+         (, (gap-wait $sel-id $path $sel-parent (arg $index))
+            (gap-value $sel-id $sel-parent $sel-parent-value)
+            (DEF get-value-at-position-select $select-p $select-t))
          (O
-           (- (gap-wait $sel-id $path $parent $arg))
-           (- (gap-value $sel-id $parent $parent-value))
+           (- (gap-wait $sel-id $path $sel-parent (arg $index)))
+           (- (gap-value $sel-id $sel-parent $sel-parent-value))
            (pure (gap-value $sel-id $path $value) $value
-             (index-atom $index (' $parent-value)))
-           (+ (exec (freq f120 gap-select) $select-rule-p $select-rule-t)))))
+             (index-atom $index (' $sel-parent-value)))
+           (+ (exec (freq 120 gap-select) $select-p $select-t)))))
 
-    (+ (exec (freq f190 gap-result)
+    (+ (exec (freq 190 gap-result)
          (, (gap-value $result-id $result-path $result-value)
             (gap-target $result-id $result-path))
          (O
@@ -126,22 +123,22 @@
 (DEF get-value-at-position-step
   (, (gap-task $id $expr $path))
   (O
-    (+ (exec (freq f110 gap-root)
-         (, (gap-task $root-id $expr root)
+    (+ (exec (freq 110 gap-root)
+         (, (gap-task $root-id $root-expr root)
             (DEF get-value-at-position-select $select-p $select-t))
          (O
-           (- (gap-task $root-id $expr root))
-           (+ (gap-value $root-id root $expr))
-           (+ (exec (freq f120 gap-select) $select-p $select-t)))))
+           (- (gap-task $root-id $root-expr root))
+           (+ (gap-value $root-id root $root-expr))
+           (+ (exec (freq 120 gap-select) $select-p $select-t)))))
 
-    (+ (exec (freq f111 gap-descend)
-         (, (gap-task $desc-id $desc-expr ($desc-parent $desc-arg))
-            (DEF get-value-at-position-step $step-rule-p $step-rule-t))
+    (+ (exec (freq 111 gap-descend)
+         (, (gap-task $desc-id $desc-expr ($parent (arg $index)))
+            (DEF get-value-at-position-step $step-p $step-t))
          (O
-           (- (gap-task $desc-id $desc-expr ($desc-parent $desc-arg)))
-           (+ (gap-wait $desc-id ($desc-parent $desc-arg) $desc-parent $desc-arg))
-           (+ (gap-task $desc-id $desc-expr $desc-parent))
-           (+ (exec (freq f100 gap-step) $step-rule-p $step-rule-t)))))
+           (- (gap-task $desc-id $desc-expr ($parent (arg $index))))
+           (+ (gap-wait $desc-id ($parent (arg $index)) $parent (arg $index)))
+           (+ (gap-task $desc-id $desc-expr $parent))
+           (+ (exec (freq 100 gap-step) $step-p $step-t)))))
   )
 )
 
@@ -151,7 +148,7 @@
 ;   (get-value-at-position $id $expr $path)
 ;   (DEF get-value-at-position-fn $gap-p $gap-t)
 ; then emit:
-;   (+ (exec (freq f101 run-get-value-at-position) $gap-p $gap-t))
+;   (+ (exec (freq 101 run-get-value-at-position) $gap-p $gap-t))
 (DEF get-value-at-position-fn
   (, (get-value-at-position $id $expr $path)
      (DEF get-value-at-position-step $step-p $step-t))
@@ -159,18 +156,18 @@
     (- (get-value-at-position $id $expr $path))
     (+ (gap-target $id $path))
     (+ (gap-task $id $expr $path))
-    (+ (exec (freq f100 gap-step) $step-p $step-t)))
+    (+ (exec (freq 100 gap-step) $step-p $step-t)))
 )
 ; Example call, kept inactive:
 ; (get-value-at-position gap-example
 ;   (Inheritance Allen (Evaluation (Var 1) (like (we sodaDrinker) dean)))
-;   (((root arg/2) arg/1) arg/0))
-; (exec (freq f000 call-gap-example)
+;   (((root (arg 2)) (arg 1)) (arg 0)))
+; (exec (freq 000 call-gap-example)
 ;   (, (get-value-at-position gap-example
 ;        (Inheritance Allen (Evaluation (Var 1) (like (we sodaDrinker) dean)))
-;        (((root arg/2) arg/1) arg/0))
+;        (((root (arg 2)) (arg 1)) (arg 0)))
 ;      (DEF get-value-at-position-fn $gap-p $gap-t))
-;   (O (+ (exec (freq f101 run-get-value-at-position) $gap-p $gap-t))))
+;   (O (+ (exec (freq 101 run-get-value-at-position) $gap-p $gap-t))))
 
 ; valuation
 ;
@@ -222,7 +219,7 @@
          $path))
     (- (get-vars-for-tree-result (VAL-VARS $id) $path $var))
     (- (valuation-satisfying-set $id $candidate-expr))
-    (+ (exec (freq f231 valuation-get-value) $gap-p $gap-t)))
+    (+ (exec (freq 231 valuation-get-value) $gap-p $gap-t)))
 )
 
 (DEF valuation-binding-finish
@@ -242,7 +239,7 @@
 ;   (FACT $candidate-expr)
 ;   (DEF valuation-fn $val-p $val-t)
 ; then emit:
-;   (+ (exec (freq f200 run-valuation) $val-p $val-t))
+;   (+ (exec (freq 200 run-valuation) $val-p $val-t))
 (DEF valuation-fn
   (, (valuation $id $pattern)
      (DEF valuation-start $start-p $start-t)
@@ -251,11 +248,11 @@
      (DEF valuation-binding-finish $finish-p $finish-t)
      (DEF get-vars-for-tree-fn $gv-p $gv-t))
   (O
-    (+ (exec (freq f200 valuation-start) $start-p $start-t))
-    (+ (exec (freq f210 valuation-get-vars) $gv-p $gv-t))
-    (+ (exec (freq f220 valuation-match) $match-p $match-t))
-    (+ (exec (freq f230 valuation-bind) $bind-p $bind-t))
-    (+ (exec (freq f240 valuation-finish) $finish-p $finish-t)))
+    (+ (exec (freq 200 valuation-start) $start-p $start-t))
+    (+ (exec (freq 210 valuation-get-vars) $gv-p $gv-t))
+    (+ (exec (freq 220 valuation-match) $match-p $match-t))
+    (+ (exec (freq 230 valuation-bind) $bind-p $bind-t))
+    (+ (exec (freq 240 valuation-finish) $finish-p $finish-t)))
 )
 
 ; Example call, kept inactive:
