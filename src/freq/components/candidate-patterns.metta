@@ -590,6 +590,24 @@
 ;   (O (+ (exec (freq 001 run-specialization-combinations) $spec-p $spec-t))))
 
 
+; candidate patterns
+;
+; This stage turns specialization results into frequent candidate patterns.
+; `specialization-result` is still indexed, so `var-conversion-fn` first
+; converts it back to variables for FACT matching. `support-count-fn` counts
+; matching facts and keeps the original display pattern with the count.
+; `candidate-pattern-check-fn` compares the support against `INPUT MIN-SUPPORT`.
+; Passing patterns are normalized through indices_to_vars/vars_to_indices before
+; emitting `candidate-pattern`; that canonicalization collapses equivalent
+; variable-renamed candidates before iterative mining sees them.
+;
+; Request:
+;   (specialization-result $id $specialized-pattern)
+;   (INPUT MIN-SUPPORT $min-support)
+;
+; Result:
+;   (candidate-pattern $id $indexed-pattern $support)
+
 (DEF var-conversion-fn
   (, (specialization-result $id $specialized-pattern))
   (O
@@ -610,26 +628,35 @@
   (O
     (pure (minimum-support-check-result $id $pattern $support $min-support $passes) $passes
       (le_f64 (f64_from_string $min-support) (f64_from_string $support)))
-    (+ (exec (freq f630 minimum-support-pass)
-         (, (minimum-support-check-result $pass-id $pass-pattern $pass-support $pass-min true))
-         (O (- (minimum-support-check-result $pass-id $pass-pattern $pass-support $pass-min true))
-            (+ (candidate-pattern $pass-id $pass-pattern $pass-support)))))))
-        
+    (+ (exec (freq 630 minimum-support-pass)
+         (, (minimum-support-check-result $pass-id $pass-pattern $pass-support $pass-min true)
+            (minimum-support-check-result $pass-id-rm $pass-pattern-rm $pass-support-rm $pass-min-rm $check-rm))
+         (O (- (minimum-support-check-result $pass-id-rm $pass-pattern-rm $pass-support-rm $pass-min-rm $check-rm))
+            (pure (candidate-pattern-var $pass-id $pass-pattern-var $pass-support) $pass-pattern-var (indices_to_vars (' $pass-pattern))))))))
+
+(DEF candidate-pattern-finish-fn
+  (, (candidate-pattern-var $id $pattern $support))
+  (O 
+    (- (candidate-pattern-var $id $pattern $support))
+    (pure (candidate-pattern $id $pattern-index $support) $pattern-index (vars_to_indices (' $pattern)))))
+
 (DEF candidate-pattern-fn
   (, (DEF var-conversion-fn $conv-p $conv-t)
      (DEF support-count-fn $support-p $support-t)
-     (DEF candidate-pattern-check-fn $min-p $min-t))
+     (DEF candidate-pattern-check-fn $min-p $min-t)
+     (DEF candidate-pattern-finish-fn $finish-p $finish-t))
   (O
-    (+ (exec (freq f610 run-var-conversion) $conv-p $conv-t))
-    (+ (exec (freq f620 run-support-count) $support-p $support-t))
-    (+ (exec (freq f621 run-candidate-pattern-check) $min-p $min-t))))
+    (+ (exec (freq 610 run-var-conversion) $conv-p $conv-t))
+    (+ (exec (freq 620 run-support-count) $support-p $support-t))
+    (+ (exec (freq 621 run-candidate-pattern-check) $min-p $min-t))
+    (+ (exec (freq 690 run-candidate-pattern-finish) $finish-p $finish-t))))
 
 
-; (exec (freq f600 call-candidate-pattern)
+; (exec (freq 600 call-candidate-pattern)
 ;   (, (support-count support-smoke $pattern)
 ;      (DEF candidate-pattern-fn $candidate-p $candidate-t))
 ;   (O
-;     (+ (exec (freq f601 run-candidate-pattern) $candidate-p $candidate-t))))
+;     (+ (exec (freq 601 run-candidate-pattern) $candidate-p $candidate-t))))
 
 
 ; (support-count support-smoke (Inheritance $x sodaDrinker))
