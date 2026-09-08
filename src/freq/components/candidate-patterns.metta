@@ -423,87 +423,171 @@
 
 ; specialization
 ;
-; This stage builds all combinations of shallow abstraction choices across the
-; variable positions of a pattern. It does not yet rewrite the original pattern;
-; it emits complete binding combinations that the replacement stage can consume.
+; This stage walks the indexed pattern left-to-right and builds a partial value
+; list for `substitute`. Variables are replaced from `shallow-abstraction-binding`
+; by matching the variable node itself; expressions push their arguments back
+; onto the todo queue; atoms are skipped. A root variable is handled directly
+; so it does not go through car/cdr traversal.
 ;
 ; Request:
 ;   (run-specialization $id $pattern)
 ;
 ; Inputs:
-;   (specialization-position $id $pos $path $var)
-;   (specialization-final-position $id $final-pos)
 ;   (shallow-abstraction-binding $id $path $var $value)
 ;
-; Result:
-;   (specialization-combination $id $bindings)
+; Internal state:
+;   (specialization-partial $id $todo $values)
+;   (specialization-head $id $todo $values $node)
+;   (specialization-rest $id $todo $values $rest)
 ;
-; Binding list item shape:
-;   (binding $path $var $value)
-(spec-index-next 1 2)
-(spec-index-next 2 3)
-(spec-index-next 3 4)
-(spec-index-next 4 5)
-(spec-index-next 5 6)
-(spec-index-next 6 7)
-(spec-index-next 7 8)
-(spec-index-next 8 9)
-
+; Result:
+;   (specialization-result $id $specialized-pattern)
+;
+; The value list is passed to:
+;   (substitute (' ($pattern $values)))
 (DEF specialization-start
-  (, (run-specialization $id $pattern))
+  (, (run-specialization $id $pattern)
+     (DEF specialization-start-indexed $indexed-p $indexed-t))
   (O
-    (+ (specialization-position $id 1 (var 0)))
-    (+ (specialization-partial $id 1 ()))))
+    (pure (specialization-indexed-pattern $id $indexed-pattern) $indexed-pattern
+      (vars_to_indices (' $pattern)))
+    (+ (exec (freq 501 specialization-start-indexed) $indexed-p $indexed-t))))
 
-(DEF specialization-extend
-  (, (specialization-partial $id $pos $partial)
-     (specialization-position $id $pos $var)
-     (shallow-abstraction-binding $id $path $var $value)
-     (spec-index-next $pos $next-pos)
-     (DEF specialization-extend $extend-p $extend-t)
+(DEF specialization-start-indexed
+  (, (specialization-indexed-pattern $id $indexed-pattern)
+     (DEF specialization-start-choice $choice-p $choice-t))
+  (O
+    (- (specialization-indexed-pattern $id $indexed-pattern))
+    (pure (specialization-root-is-var $id $indexed-pattern $is-var) $is-var
+      (i8_to_string (is_var (' $indexed-pattern))))
+    (+ (exec (freq 502 specialization-start-choice) $choice-p $choice-t))))
+
+(DEF specialization-start-choice
+  (, (DEF specialization-extend $extend-p $extend-t)
      (DEF specialization-finish $finish-p $finish-t))
   (O
-    (- (specialization-partial $id $pos $partial))
-    (- (specialization-position $id $pos $var))
-    (pure (specialization-partial $id $next-pos $next-partial) $next-partial
-      (append (' ($partial ($value)))))
-    (+ (specialization-position $id $next-pos (var $pos)))
-    (+ (exec (freq f510 specialization-extend) $extend-p $extend-t))
-    (+ (exec (freq f590 specialization-finish) $finish-p $finish-t))))
+    (+ (exec (freq 502 specialization-start-var)
+         (, (specialization-root-is-var $id $indexed-pattern 1)
+            (shallow-abstraction-binding $id $path $indexed-pattern $value))
+         (O
+           (- (specialization-root-is-var $id $indexed-pattern 1))
+           (+ (specialization-partial $id () ($value)))
+           (+ (exec (freq 509 specialization-finish-empty) $finish-p $finish-t)))))
+    (+ (exec (freq 503 specialization-start-non-var)
+         (, (specialization-root-is-var $id $indexed-pattern 0))
+         (O
+           (- (specialization-root-is-var $id $indexed-pattern 0))
+           (+ (specialization-partial $id $indexed-pattern ()))
+           (+ (exec (freq 510 specialization-extend) $extend-p $extend-t)))))))
+
+(DEF specialization-extend
+  (, (specialization-partial $id $todo $partial)
+     (DEF specialization-classify $classify-p $classify-t)
+     (DEF specialization-finish $finish-p $finish-t))
+  (O
+    (+ (exec (freq 509 specialization-finish-empty) $finish-p $finish-t))
+    (+ (exec (freq 510 specialization-split)
+         (, (specialization-partial $id $todo $partial))
+         (O
+           (- (specialization-partial $id $todo $partial))
+           (pure (specialization-head $id $todo $partial $head) $head
+             (car-atom (' $todo)))
+           (pure (specialization-rest $id $todo $partial $rest) $rest
+             (cdr-atom (' $todo)))
+           (+ (exec (freq 511 specialization-classify) $classify-p $classify-t)))))))
+
+(DEF specialization-classify
+  (, (specialization-head $id $todo $partial $head)
+     (DEF specialization-choose $choose-p $choose-t))
+  (O
+    (pure (specialization-is-var $id $todo $partial $head $is-var) $is-var
+      (i8_to_string (is_var (' $head))))
+    (pure (specialization-is-exp $id $todo $partial $head $is-exp) $is-exp
+      (i8_to_string (is_exp (' $head))))
+    (+ (exec (freq 512 specialization-choose) $choose-p $choose-t))))
+
+(DEF specialization-choose
+  (, (DEF specialization-extend $extend-p $extend-t)
+     (DEF specialization-prepend-exp-args $prep-p $prep-t))
+  (O
+    (+ (exec (freq 511 specialization-append-var)
+         (, (specialization-is-var $id $todo $partial $var 1)
+            (specialization-is-exp $id $todo $partial $var 0)
+            (specialization-rest $id $todo $partial $rest)
+            (specialization-head $id $todo $partial $var)
+            (shallow-abstraction-binding $id $path $var $value))
+         (O
+           (- (specialization-is-var $id $todo $partial $var 1))
+           (- (specialization-is-exp $id $todo $partial $var 0))
+           (- (specialization-rest $id $todo $partial $rest))
+           (- (specialization-head $id $todo $partial $var))
+           (pure (specialization-partial $id $rest $next-partial) $next-partial
+             (append (' ($partial ($value)))))
+           (+ (exec (freq 510 specialization-extend) $extend-p $extend-t)))))
+    (+ (exec (freq 512 specialization-expand-exp)
+         (, (specialization-is-var $id $todo $partial $expr 0)
+            (specialization-is-exp $id $todo $partial $expr 1)
+            (specialization-rest $id $todo $partial $rest)
+            (specialization-head $id $todo $partial $expr))
+         (O
+           (- (specialization-is-var $id $todo $partial $expr 0))
+           (- (specialization-is-exp $id $todo $partial $expr 1))
+           (- (specialization-rest $id $todo $partial $rest))
+           (- (specialization-head $id $todo $partial $expr))
+           (pure (specialization-exp-args $id $rest $partial $args) $args
+             (cdr-atom (' $expr)))
+           (+ (exec (freq 514 specialization-prepend-exp-args) $prep-p $prep-t)))))
+    (+ (exec (freq 513 specialization-skip-atom)
+         (, (specialization-is-var $id $todo $partial $atom 0)
+            (specialization-is-exp $id $todo $partial $atom 0)
+            (specialization-rest $id $todo $partial $rest)
+            (specialization-head $id $todo $partial $atom))
+         (O
+           (- (specialization-is-var $id $todo $partial $atom 0))
+           (- (specialization-is-exp $id $todo $partial $atom 0))
+           (- (specialization-rest $id $todo $partial $rest))
+           (- (specialization-head $id $todo $partial $atom))
+           (+ (specialization-partial $id $rest $partial))
+           (+ (exec (freq 510 specialization-extend) $extend-p $extend-t)))))
+    ))
+
+(DEF specialization-prepend-exp-args
+  (, (specialization-exp-args $id $rest $partial $args)
+     (DEF specialization-extend $extend-p $extend-t))
+  (O
+    (- (specialization-exp-args $id $rest $partial $args))
+    (pure (specialization-partial $id $next-todo $partial) $next-todo
+      (append (' ($args $rest))))
+    (+ (exec (freq 510 specialization-extend) $extend-p $extend-t))))
 
 (DEF specialization-finish
-  (, (specialization-partial $id $pos $partial)
+  (, (specialization-partial $id () $partial)
      (run-specialization $id $pattern))
   (O
-    (- (specialization-partial $id $pos $partial))
-    (+ (specialization-combination $id $partial))
+    (- (specialization-partial $id () $partial))
     (pure (specialization-result $id $specialized-pattern) $specialized-pattern
       (substitute (' ($pattern $partial))))))
 
 (DEF specialization-combinations-fn
   (, (run-specialization $id $pattern)
-     (DEF specialization-start $start-p $start-t)
-     (DEF specialization-extend $extend-p $extend-t)
-     (DEF specialization-finish $finish-p $finish-t))
+     (DEF specialization-start $start-p $start-t))
   (O
-    (+ (exec (freq f500 specialization-start) $start-p $start-t))
-    (+ (exec (freq f510 specialization-extend) $extend-p $extend-t))
-    (+ (exec (freq f590 specialization-finish) $finish-p $finish-t))))
+    (+ (exec (freq 500 specialization-start) $start-p $start-t))))
 
 ; specialization cross-product smoke
 ; (run-specialization spec-test (Inheritance $x $y))
 
-; (shallow-abstraction-binding spec-test (root arg/1) (var 0) Allen)
-; (shallow-abstraction-binding spec-test (root arg/1) (var 0) Lily)
-; (shallow-abstraction-binding spec-test (root arg/1) (var 0) (var 0))
-; (shallow-abstraction-binding spec-test (root arg/2) (var 1) human)
-; (shallow-abstraction-binding spec-test (root arg/2) (var 1) sodaDrinker)
-; (shallow-abstraction-binding spec-test (root arg/2) (var 1) (var 1))
+; (shallow-abstraction-binding spec-test (root (arg 1)) (var 0) Allen)
+; (shallow-abstraction-binding spec-test (root (arg 1)) (var 0) Lily)
+; (shallow-abstraction-binding spec-test (root (arg 1)) (var 0) (var 0))
+; (shallow-abstraction-binding spec-test (root (arg 2)) (var 1) human)
+; (shallow-abstraction-binding spec-test (root (arg 2)) (var 1) sodaDrinker)
+; (shallow-abstraction-binding spec-test (root (arg 2)) (var 1) (var 1))
 
-; (exec (freq f000 call-specialization-combinations)
+; (exec (freq 000 call-specialization-combinations)
 ;   (, (run-specialization spec-test (Inheritance $x $y))
 ;      (DEF specialization-combinations-fn $spec-p $spec-t))
-;   (O (+ (exec (freq f001 run-specialization-combinations) $spec-p $spec-t))))
+;   (O (+ (exec (freq 001 run-specialization-combinations) $spec-p $spec-t))))
 
 
 (DEF var-conversion-fn
