@@ -281,6 +281,7 @@
 ;      (Eval (var (0 1)) (var (0 2))))
 ;
 ; Nested expression arguments are treated as one shallow child for now.
+(sae-index-next 0 1)
 (sae-index-next 1 2)
 (sae-index-next 2 3)
 (sae-index-next 3 4)
@@ -291,88 +292,82 @@
 (sae-index-next 8 9)
 
 (DEF sae-start
-  (, (shallow-abstract-expression $id (var $source-index) $expr))
+  (, (shallow-abstract-expression (SAE $parent-id $path $expr) $path (var $source-index) $expr)
+     (DEF sae-start-shape $shape-p $shape-t))
   (O
-    (pure (sae-link $id $link) $link (car-atom (' $expr)))
-    (pure (sae-args $id (var $source-index) $args) $args (cdr-atom (' $expr)))))
+    (- (shallow-abstract-expression (SAE $parent-id $path $expr) $path (var $source-index) $expr))
+    (pure (sae-shape-link $parent-id $path (var $source-index) $expr $link) $link (car-atom (' $expr)))
+    (pure (sae-shape-arity $parent-id $path (var $source-index) $expr $arity) $arity
+      (size-atom (cdr-atom (' $expr))))
+    (+ (exec (freq 301 sae-start-shape) $shape-p $shape-t))))
+
+(DEF sae-start-shape
+  (, (sae-shape-link $parent-id $path (var $source-index) $expr $link)
+     (sae-shape-arity $parent-id $path (var $source-index) $expr $arity))
+  (O
+    (- (sae-shape-link $parent-id $path (var $source-index) $expr $link))
+    (- (sae-shape-arity $parent-id $path (var $source-index) $expr $arity))
+    (+ (sae-link (SAE $parent-id $path (var $source-index) $link $arity) $link))
+    (+ (sae-args-arity (SAE $parent-id $path (var $source-index) $link $arity) $parent-id (var $source-index) $arity))
+    (+ (shallow-abstraction-wait $parent-id $path (var $source-index) (SAE $parent-id $path (var $source-index) $link $arity)))))
 
 (DEF sae-start-walk
-  (, (sae-args $id (var $source-index) $args))
+  (, (sae-args-arity $id $parent-id (var $source-index) $arity))
   (O
-    (- (sae-args $id (var $source-index) $args))
-    (+ (sae-walk $id (var $source-index) $args 1 ()))))
+    (- (sae-args-arity $id $parent-id (var $source-index) $arity))
+    (+ (sae-slot-value $id (var $source-index) 1 1))
+    (+ (sae-walk $id (var $source-index) $arity 1 ()))))
 
 (DEF sae-step
-  (, (sae-walk $id (var $source-index) $args $pos $acc)
+  (, (sae-walk $id (var $source-index) $remaining $pos $acc)
+     (sae-index-next $next-remaining $remaining)
      (sae-index-next $pos $next-pos)
-     (DEF sae-history-resolve $hist-p $hist-t))
+     (DEF sae-slot-append $append-p $append-t))
   (O
-    (pure (sae-current $id $pos $value) $value (car-atom (' $args)))
-    (pure (sae-step-rest $id (var $source-index) $pos $rest) $rest (cdr-atom (' $args)))
-    (- (sae-walk $id (var $source-index) $args $pos $acc))
-    (+ (sae-history-pending $id (var $source-index) $pos $next-pos $acc))
-    (+ (exec (freq f320 sae-resolve-history) $hist-p $hist-t))))
+    (- (sae-walk $id (var $source-index) $remaining $pos $acc))
+    (+ (sae-slot-pending $id (var $source-index) $pos $next-pos $next-remaining $acc))
+    (+ (exec (freq 320 sae-slot-append) $append-p $append-t))))
 
-(DEF sae-history-resolve
-  (, (sae-history-pending $id (var $source-index) $pos $next-pos $acc)
-     (sae-current $id $pos $value)
-     (sae-step-rest $id (var $source-index) $pos $rest)
+(DEF sae-slot-append
+  (, (sae-slot-pending $id (var $source-index) $pos $next-pos $next-remaining $acc)
+     (sae-slot-value $id (var $source-index) $pos $slot)
      (DEF sae-continue $cont-p $cont-t))
   (O
-    (+ (exec (freq f321 sae-reuse-history)
-         (, (sae-history-pending $reuse-id (var $reuse-source-index) $reuse-pos $reuse-next-pos $reuse-acc)
-            (sae-current $reuse-id $reuse-pos $reuse-value)
-            (sae-step-rest $reuse-id (var $reuse-source-index) $reuse-pos $reuse-rest)
-            (sae-pos-history $reuse-id (var $reuse-source-index) $reuse-value $first-pos))
-         (O
-           (- (sae-history-pending $reuse-id (var $reuse-source-index) $reuse-pos $reuse-next-pos $reuse-acc))
-           (pure (sae-step-acc $reuse-id (var $reuse-source-index) $reuse-next-pos $reuse-next-acc) $reuse-next-acc
-             (append (' ($reuse-acc ((var ($reuse-source-index $first-pos)))))))
-           (+ (exec (freq f330 sae-continue) $cont-p $cont-t)))))
-    (+ (exec (freq f322 sae-new-history)
-         (, (sae-history-pending $new-id (var $new-source-index) $new-pos $new-next-pos $new-acc)
-            (sae-current $new-id $new-pos $new-value)
-            (sae-step-rest $new-id (var $new-source-index) $new-pos $new-rest))
-         (O
-           (- (sae-history-pending $new-id (var $new-source-index) $new-pos $new-next-pos $new-acc))
-           (+ (sae-pos-history $new-id (var $new-source-index) $new-value $new-pos))
-           (pure (sae-step-acc $new-id (var $new-source-index) $new-next-pos $new-next-acc) $new-next-acc
-             (append (' ($new-acc ((var ($new-source-index $new-pos)))))))
-           (+ (exec (freq f330 sae-continue) $cont-p $cont-t)))))))
+    (- (sae-slot-pending $id (var $source-index) $pos $next-pos $next-remaining $acc))
+    (pure (sae-step-acc $id (var $source-index) $pos $next-pos $next-remaining $next-acc) $next-acc
+      (append (' ($acc ((var ($source-index $slot)))))))
+    (+ (sae-slot-value $id (var $source-index) $next-pos $slot))
+    (+ (sae-slot-value $id (var $source-index) $next-pos $next-pos))
+    (+ (exec (freq 330 sae-continue) $cont-p $cont-t))))
 
 (DEF sae-continue
-  (, (sae-step-rest $id (var $source-index) $pos $rest)
-     (sae-step-acc $id (var $source-index) $next-pos $next-acc)
+  (, (sae-step-acc $id (var $source-index) $pos $next-pos $next-remaining $next-acc)
      (DEF sae-finish $finish-p $finish-t)
      (DEF sae-step $step-p $step-t))
   (O
-    (- (sae-step-rest $id (var $source-index) $pos $rest))
-    (- (sae-step-acc $id (var $source-index) $next-pos $next-acc))
-    (+ (sae-walk $id (var $source-index) $rest $next-pos $next-acc))
-    (+ (exec (freq f305 sae-finish) $finish-p $finish-t))
-    (+ (exec (freq f310 sae-step) $step-p $step-t))))
+    (- (sae-step-acc $id (var $source-index) $pos $next-pos $next-remaining $next-acc))
+    (+ (sae-walk $id (var $source-index) $next-remaining $next-pos $next-acc))
+    (+ (exec (freq 305 sae-finish) $finish-p $finish-t))
+    (+ (exec (freq 310 sae-step) $step-p $step-t))))
 
 (DEF sae-finish
-  (, (sae-walk $id (var $source-index) () $pos $acc)
-     (sae-link $id $link)
-     (sae-current $rid $rpos $rvalue)
-     (sae-pos-history $rid $rs-index $rvalue $rfirst-pos))
+  (, (sae-walk $id (var $source-index) 0 $pos $acc)
+     (sae-link $id $link))
   (O
-    (- (sae-walk $id (var $source-index) () $pos $acc))
-    (- (sae-link $id $link))
-    (- (sae-current $rid $rpos $rvalue))
-    (- (sae-pos-history $rid $rs-index $rvalue $rfirst-pos))
+    (- (sae-walk $id (var $source-index) 0 $pos $acc))
     (pure (sae-step-result $id (var $source-index) $res) $res (append (' (($link) $acc))))))
 
 (DEF shallow-abstract-expression-fn
-  (, (shallow-abstract-expression $id (var $source-index) $expr)
+  (, (shallow-abstract-expression $id $path (var $source-index) $expr)
      (DEF sae-start $start-p $start-t)
+     (DEF sae-start-shape $shape-p $shape-t)
      (DEF sae-start-walk $walk-p $walk-t)
      (DEF sae-step $step-p $step-t))
   (O
-    (+ (exec (freq f300 sae-start) $start-p $start-t))
-    (+ (exec (freq f301 sae-start-walk) $walk-p $walk-t))
-    (+ (exec (freq f310 sae-step) $step-p $step-t))))
+    (+ (exec (freq 300 sae-start) $start-p $start-t))
+    (+ (exec (freq 301 sae-start-shape) $shape-p $shape-t))
+    (+ (exec (freq 303 sae-start-walk) $walk-p $walk-t))
+    (+ (exec (freq 310 sae-step) $step-p $step-t))))
 
 
 
@@ -387,22 +382,21 @@
   (, (shallow-abstraction-request-var $id $path (var $source-index) $value $is-var)
      (shallow-abstraction-request-expr $id $path (var $source-index) $value $is-exp))
   (O
-    (+ (exec (freq f351 shallow-keep-var)
+    (+ (exec (freq 351 shallow-keep-var)
          (, (shallow-abstraction-request-var $keep-id $keep-path (var $keep-source-index) $keep-value 1))
          (O (- (shallow-abstraction-request-var $keep-id $keep-path (var $keep-source-index) $keep-value 1))
             (+ (shallow-abstraction-binding $keep-id $keep-path (var $keep-source-index) $keep-value)))))
-    (+ (exec (freq f352 shallow-abstract-expression)
+    (+ (exec (freq 352 shallow-abstract-expression)
          (, (shallow-abstraction-request-var $expr-id $expr-path (var $expr-source-index) $expr-value 0)
             (shallow-abstraction-request-expr $expr-id $expr-path (var $expr-source-index) $expr-value 1)
             (DEF shallow-abstract-expression-fn $sae-p $sae-t)
             (DEF shallow-abstraction-expression-finish $finish-p $finish-t))
          (O
             (- (shallow-abstraction-request-expr $expr-id $expr-path (var $expr-source-index) $expr-value 1))
-            (+ (shallow-abstract-expression (SAE $expr-id $expr-path) (var $expr-source-index) $expr-value))
-            (+ (shallow-abstraction-wait $expr-id $expr-path (var $expr-source-index) (SAE $expr-id $expr-path)))
-            (+ (exec (freq f353 shallow-run-sae) $sae-p $sae-t))
-            (+ (exec (freq f390 shallow-finish-expression) $finish-p $finish-t)))))
-    (+ (exec (freq f359 shallow-keep-atom)
+            (+ (shallow-abstract-expression (SAE $expr-id $expr-path $expr-value) $expr-path (var $expr-source-index) $expr-value))
+            (+ (exec (freq 353 shallow-run-sae) $sae-p $sae-t))
+            (+ (exec (freq 390 shallow-finish-expression) $finish-p $finish-t)))))
+    (+ (exec (freq 359 shallow-keep-atom)
          (, (shallow-abstraction-request-var $atom-id $atom-path (var $atom-source-index) $atom-value 0)
            (shallow-abstraction-request-expr $atom-id $atom-path (var $atom-source-index) $atom-value 0))
          (O (- (shallow-abstraction-request-expr $atom-id $atom-path (var $atom-source-index) $atom-value 0))
@@ -424,8 +418,8 @@
      (DEF shallow-abstraction-start $start-p $start-t)
      (DEF shallow-abstraction-step $step-p $step-t))
   (O
-    (+ (exec (freq f350 shallow-start) $start-p $start-t))
-    (+ (exec (freq f360 shallow-step) $step-p $step-t))))
+    (+ (exec (freq 350 shallow-start) $start-p $start-t))
+    (+ (exec (freq 360 shallow-step) $step-p $step-t))))
 
 ; specialization
 ;
