@@ -1,5 +1,4 @@
 ;; TEST-AUX src/freq/components/candidate-patterns.metta
-;; TEST-AUX src/freq/components/iterative-miner.metta
 
 (INPUT MIN-SUPPORT 2)
 
