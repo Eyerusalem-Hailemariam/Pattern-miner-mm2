@@ -28,7 +28,7 @@
 
 (EXPECTED-RESULT iterative-miner-nested-all (iterative-candidate-pattern iter-smoke (Inheritance (var 0) (eval (var 1) (var 2))) (Inheritance (var 0) (eval (var 1) (var 2))) 2))
 (EXPECTED-RESULT iterative-miner-nested-right-const (iterative-candidate-pattern iter-smoke (Inheritance (var 0) (eval (var 1) (var 2))) (Inheritance (var 0) (eval (var 1) sodarinker)) 2))
-(EXPECTED-RESULT iterative-miner-nested-left-const (iterative-candidate-pattern iter-smoke (Inheritance (var 0) (eval (var 1) (var 2))) (Inheritance (var 0) (eval gen (var 2))) 2))
+(EXPECTED-RESULT iterative-miner-nested-left-const (iterative-candidate-pattern iter-smoke (Inheritance (var 0) (eval (var 1) (var 2))) (Inheritance (var 0) (eval gen (var 1))) 2))
 (EXPECTED-RESULT iterative-miner-nested-const (iterative-candidate-pattern iter-smoke (Inheritance (var 0) (eval (var 1) (var 2))) (Inheritance (var 0) (eval gen sodarinker)) 2))
 (EXPECTED-RESULT iterative-miner-all (iterative-candidate-pattern iter-smoke (Inheritance (var 0) (var 1)) (Inheritance (var 0) (var 1)) 10))
 (EXPECTED-RESULT iterative-miner-eval (iterative-candidate-pattern iter-smoke (Inheritance (var 0) (var 1)) (Inheritance (var 0) (eval (var 1) (var 2))) 2))
