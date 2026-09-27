@@ -706,9 +706,9 @@
        (DEF frequent-miner-cleanup-all-at-once-fn $all-p $all-t)
        (DEF frequent-miner-cleanup-target-task-fn $target-p $target-t))
     (O
-        (+ (exec (freq f701 frequent-miner-cleanup-blocks) $blocks-p $blocks-t))
-        (+ (exec (freq f702 frequent-miner-cleanup-all-at-once) $all-p $all-t))
-        (+ (exec (freq f703 frequent-miner-cleanup-target-task) $target-p $target-t))))
+        (+ (exec (freq 701 frequent-miner-cleanup-blocks) $blocks-p $blocks-t))
+        (+ (exec (freq 702 frequent-miner-cleanup-all-at-once) $all-p $all-t))
+        (+ (exec (freq 703 frequent-miner-cleanup-target-task) $target-p $target-t))))
 
 ; frequent miner integration
 ;
@@ -729,11 +729,11 @@
     (+ (valuation $id $pattern))
     (+ (run-shallow-abstraction $id))
     (+ (run-specialization $id $pattern))
-    (+ (exec (freq f200 frequent-valuation) $valuation-p $valuation-t))
-    (+ (exec (freq f350 frequent-shallow-abstraction) $shallow-p $shallow-t))
-    (+ (exec (freq f500 frequent-specialization) $specialization-p $specialization-t))
-    (+ (exec (freq f600 frequent-candidate-patterns) $candidate-p $candidate-t))
-    (+ (exec (freq f700 frequent-miner-cleanup) $cleanup-p $cleanup-t))))
+    (+ (exec (freq 200 frequent-valuation) $valuation-p $valuation-t))
+    (+ (exec (freq 350 frequent-shallow-abstraction) $shallow-p $shallow-t))
+    (+ (exec (freq 500 frequent-specialization) $specialization-p $specialization-t))
+    (+ (exec (freq 600 frequent-candidate-patterns) $candidate-p $candidate-t))
+    (+ (exec (freq 700 frequent-miner-cleanup) $cleanup-p $cleanup-t))))
 
 ; (exec (freq f000 call-frequent-miner)
 ;   (, (run-frequent-miner fm-test (Inheritance $x $y))
