@@ -7,7 +7,7 @@
 
 (INPUT MIN-SUPPORT 2)
 
-(run-iterative-miner iter-smoke (Inheritance $a $b))
+(run-iterative-miner iter-smoke (Inheritance (var 0) (var 1)))
 
 (FACT (Inheritance Allen sodaDrinker))
 (FACT (Inheritance Abe sodaDrinker))
