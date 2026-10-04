@@ -17,6 +17,7 @@
 (Inheritance Jassy human)
 (Inheritance Jenica human)
 (Inheritance Kecia human)
+(Inheritance Allen human)
 
 (Inheritance Allen man)
 (Inheritance Abe man)
