@@ -43,6 +43,38 @@
             (cdr-atom (' $pattern)))))
             
 
+;; Compute total count denominator: choose(N, k) = N! / ((N-k)! k!)
+;; Equivalently, divide the falling factorial N*(N-1)*...*(N-k+1) by k!.
+(exec 3
+    (, (INPUT DB-SIZE $n)
+       (isurp-num-of-conjuncts $ctx $pattern $k))
+    (O
+        (pure
+            (isurp-total-count-of $ctx $pattern $total)
+            $total
+            (i64_to_string
+                (div_i64
+                    (falling_factorial
+                        (i64_from_string $n)
+                        (i64_from_string $k))
+                    (factorial
+                        (i64_from_string $k)))))))
+
+
+;; Compute empirical observed pattern probability: P(pattern) = support / total_count
+(exec 4
+    (, (isurp-old-pattern $ctx $pattern $support)
+       (isurp-total-count-of $ctx $pattern $total))
+    (O
+        (pure
+            (isurp-pattern-prob $ctx $prob)
+            $prob
+            (f64_to_string
+                (div_f64
+                    (f64_from_string $support)
+                    (f64_from_string $total))))))
+
+
 ;; Generate partition list from indexed $ctx so blocks carry (var N) notation,
 ;; which matches the isurp-clause-support keys produced by exec 6.
 (exec 5
@@ -79,39 +111,6 @@
         (+ (isurp-partition-block $ctx $total ($b1 $b2 $b3) $b1))
         (+ (isurp-partition-block $ctx $total ($b1 $b2 $b3) $b2))
         (+ (isurp-partition-block $ctx $total ($b1 $b2 $b3) $b3))))
-
-
-;; Compute total count denominator: N^(k) / k!
-;; (falling factorial = N*(N-1)*...*(N-k+1), divide by k!)
-(exec 3
-    (, (INPUT DB-SIZE $n)
-       (isurp-num-of-conjuncts $ctx $pattern $k))
-    (O
-        (pure
-            (isurp-total-count-of $ctx $pattern $total)
-            $total
-            (i64_to_string
-                (div_i64
-                    (falling_factorial
-                        (i64_from_string $n)
-                        (i64_from_string $k))
-                    (factorial
-                        (i64_from_string $k)))))))
-
-
-;; Compute empirical observed pattern probability: P(pattern) = support / total_count
-(exec 4
-    (, (isurp-old-pattern $ctx $pattern $support)
-       (isurp-total-count-of $ctx $pattern $total))
-    (O
-        (pure
-            (isurp-pattern-prob $ctx $prob)
-            $prob
-            (f64_to_string
-                (div_f64
-                    (f64_from_string $support)
-                    (f64_from_string $total))))))
-
 
 
 (exec 6
