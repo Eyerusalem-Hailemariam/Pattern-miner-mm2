@@ -1,5 +1,3 @@
-
-
 ;; Legacy public input: index raw pattern once
 (exec 0
     (, (INPUT PATTERN ($pattern $support)))
@@ -24,18 +22,6 @@
     (O (count (INPUT DB-SIZE $size) $size $fact)))
 
 
-;; Miner-integrated pattern input; use the support counted from DB-FACT rows.
-(exec 1
-    (, (INPUT SURP-MODE isurp-old)
-       (isurp-pattern-support $indexed-pattern $support))
-    (O
-        (pure
-            (isurp-old-pattern $indexed-pattern $pattern $support)
-            $pattern
-            (indices_to_vars
-                (cons , (' $indexed-pattern))))))
-
-
 ;; Compute the number of conjunctive clauses in the pattern
 (exec 2
     (, (isurp-old-pattern $ctx $pattern $support))
@@ -55,7 +41,44 @@
             (isurp-clause-list $ctx $clauses)
             $clauses
             (cdr-atom (' $pattern)))))
+            
 
+;; Generate partition list from indexed $ctx so blocks carry (var N) notation,
+;; which matches the isurp-clause-support keys produced by exec 6.
+(exec 5
+    (, (isurp-old-pattern $ctx $pattern $support)
+       (isurp-total-count-of $ctx $pattern $total))
+    (O
+        (pure
+            (isurp-partitions $ctx $total $p)
+            $p
+            (partitions (' $ctx)))))
+
+
+;; Extract all 4 partitions at once by matching the 4-element partition list.
+(exec 5.1
+    (, (isurp-partitions $ctx $total ($p1 $p2 $p3 $p4)))
+    (O
+        (+ (isurp-partition $ctx $total $p1))
+        (+ (isurp-partition $ctx $total $p2))
+        (+ (isurp-partition $ctx $total $p3))
+        (+ (isurp-partition $ctx $total $p4))))
+
+;; 2-block partition: extract both blocks in one shot.
+(exec 5.2
+    (, (isurp-partition $ctx $total ($b1 $b2)))
+    (O
+        (+ (isurp-partition-block $ctx $total ($b1 $b2) $b1))
+        (+ (isurp-partition-block $ctx $total ($b1 $b2) $b2))))
+
+
+;; 3-block partition: extract all three blocks in one shot.
+(exec 5.3
+    (, (isurp-partition $ctx $total ($b1 $b2 $b3)))
+    (O
+        (+ (isurp-partition-block $ctx $total ($b1 $b2 $b3) $b1))
+        (+ (isurp-partition-block $ctx $total ($b1 $b2 $b3) $b2))
+        (+ (isurp-partition-block $ctx $total ($b1 $b2 $b3) $b3))))
 
 
 ;; Compute total count denominator: N^(k) / k!
@@ -91,85 +114,86 @@
 
 
 
-;; Generic singleton block support computed from DB-FACT rows matching class.
 (exec 6
-    (, (DB-FACT (Inheritance $entity $class)))
+    (, (DB-FACT ($rel $entity $target)))
     (O
         (count
-            (isurp-clause-support ((Inheritance (var 0) $class)) $support)
+            (isurp-clause-support (($rel (var 0) $target)) $support)
             $support
             $entity)))
 
-;; Generic pair block support with independent variables.
-(exec 6
-    (, (DB-FACT (Inheritance $entity1 $c1))
-       (DB-FACT (Inheritance $entity2 $c2)))
-    (O
-        (count
-            (isurp-clause-support
-                ((Inheritance (var 0) $c1)
-                 (Inheritance (var 1) $c2)) $support)
-            $support
-            ($entity1 $entity2))))
 
-;; Generic pair block support with shared variable.
+;; Shared variable across any 2 facts
 (exec 6
-    (, (DB-FACT (Inheritance $entity $c1))
-       (DB-FACT (Inheritance $entity $c2)))
+    (, (DB-FACT ($rel1 $entity $t1))
+       (DB-FACT ($rel2 $entity $t2)))
     (O
         (count
             (isurp-clause-support
-                ((Inheritance (var 0) $c1)
-                 (Inheritance (var 0) $c2)) $support)
+                (( $rel1 (var 0) $t1 )
+                 ( $rel2 (var 0) $t2 )) $support)
             $support
             $entity)))
 
-;; Map generic clause supports into block support for any partition context.
-(exec 6
-    (, (isurp-clause-support $block $support))
-    (, (isurp-block-support $ctx $pid $block $support)))
+
+;; Connect block support: $part is the stable partition id from the iterator,
+;; $block is an indexed (var N) block that matches isurp-clause-support keys.
+(exec 6.1
+    (, (isurp-partition-block $ctx $total $part $block)
+       (isurp-clause-support $block $support))
+    (O
+        (+ (isurp-block-support $ctx $total $part $block $support))))
 
 
 
 ;; Turn DB-derived block supports into probabilities using the full-pattern denominator.
-(exec 7
-    (, (isurp-block-support $ctx $pid $block $b_support)
-       (isurp-total-count-of $ctx $pattern $total))
+(exec 7.5
+    (, (isurp-block-support $ctx $total $partition $block $support))
     (O
         (pure
-            (isurp-block-prob $ctx $pid $block $b_prob)
+            (isurp-block-prob $ctx $partition $block $b_prob)
             $b_prob
             (f64_to_string
                 (div_f64
-                    (f64_from_string $b_support)
+                    (f64_from_string $support)
                     (f64_from_string $total))))))
 
 
-
-
-;; Use fprod to multiply all block probabilities for the same (ctx, pid) partition.
-;; This correctly handles any number of blocks (1, 2, 3, ...) without hardcoding.
-;;
-;; fprod form: (fprod <output-template> <var-in-template> <float-value>)
-;;   - output-template: (isurp-partition-prob $ctx $pid $pprob) — fact written to space
-;;   - var-in-template: $pprob — gets bound to the product across all matching blocks
-;;   - float-value: $bp — the per-block float probability string collected each time
-;;
-(exec 8
-    (, (isurp-block-prob $ctx $pid $b $bp))
+;; Multiply block probabilities for the two-block partition shape.
+(exec 8.1
+    (, (isurp-partition $ctx $total ($b1 $b2))
+       (isurp-block-prob $ctx ($b1 $b2) $b1 $p1)
+       (isurp-block-prob $ctx ($b1 $b2) $b2 $p2))
     (O
-        (fprod (isurp-partition-prob $ctx $pid $pprob) $pprob $bp)))
+        (pure
+            (isurp-partition-prob $ctx ($b1 $b2) $product)
+            $product
+            (f64_to_string
+                (product_f64
+                    (f64_from_string $p1)
+                    (f64_from_string $p2))))))
 
+
+;; Multiply block probabilities for the three-block partition shape.
+(exec 8.2
+    (, (isurp-partition $ctx $total ($b1 $b2 $b3))
+       (isurp-block-prob $ctx ($b1 $b2 $b3) $b1 $p1)
+       (isurp-block-prob $ctx ($b1 $b2 $b3) $b2 $p2)
+       (isurp-block-prob $ctx ($b1 $b2 $b3) $b3 $p3))
+    (O
+        (pure
+            (isurp-partition-prob $ctx ($b1 $b2 $b3) $product)
+            $product
+            (f64_to_string
+                (product_f64
+                    (product_f64
+                        (f64_from_string $p1)
+                        (f64_from_string $p2))
+                    (f64_from_string $p3))))))
 
 
 ;; Collect all partition probabilities and reduce to [E_min, E_max] per context.
-;;
-;; fmin form: (fmin <output-template> <var-in-template> <float-value>)
-;;   - output-template: (isurp-emin $ctx $emin) — fact written to space
-;;   - var-in-template: $emin — gets bound to minimum across all partition probs
-;;   - float-value: $prob — the per-partition float probability string
-;;
-(exec 9
+(exec 9.1
     (, (isurp-partition-prob $ctx $pid $prob))
     (O
         (fmin (isurp-emin $ctx $emin) $emin $prob)
@@ -178,7 +202,7 @@
 
 
 ;; Combine emin and emax into a single interval fact
-(exec 10
+(exec 10.1
     (, (isurp-emin $ctx $emin)
        (isurp-emax $ctx $emax))
     (, (isurp-interval $ctx $emin $emax)))
@@ -199,7 +223,7 @@
 ;;   - If p > emax:         distance = p - emax    (positive distance above interval)
 
 
-(exec 11
+(exec 11.1
     (, (isurp-pattern-prob $ctx $p)
        (isurp-interval $ctx $emin $emax))
     (O
@@ -218,9 +242,11 @@
                         (f64_from_string 0.0)))))))
 
 
-;; Case 1: Normalization ENABLED
-(exec 12
+;; Emit the legacy public result with the original, unindexed pattern.
+;; Keep the indexed-context forms for MM2 callers that need the owner ID.
+(exec 12.1
     (, (INPUT NORMALIZATION True)
+       (isurp-old-pattern $ctx $pattern $support)
        (isurp-distance $ctx $dst)
        (isurp-pattern-prob $ctx $p)
        (isurp-interval $ctx $emin $emax))
@@ -232,20 +258,41 @@
                 (min_f64
                     (div_f64
                         (f64_from_string $dst)
-                        (max_f64
-                            (f64_from_string $emax)
-                            (f64_from_string $p)))
+                        (max_f64 (f64_from_string $emax) (f64_from_string $p)))
+                    (f64_from_string 1.0))))
+        (pure
+            (isurp-old-of $pattern $score)
+            $score
+            (f64_to_string
+                (min_f64
+                    (div_f64
+                        (f64_from_string $dst)
+                        (max_f64 (f64_from_string $emax) (f64_from_string $p)))
+                    (f64_from_string 1.0))))
+        (pure
+            (isurp-old-of $ctx $pattern $score)
+            $score
+            (f64_to_string
+                (min_f64
+                    (div_f64
+                        (f64_from_string $dst)
+                        (max_f64 (f64_from_string $emax) (f64_from_string $p)))
                     (f64_from_string 1.0))))))
 
-;; Case 2: Normalization DISABLED
-(exec 12
+(exec 12.1
     (, (INPUT NORMALIZATION False)
+       (isurp-old-pattern $ctx $pattern $support)
        (isurp-distance $ctx $dst))
     (O
         (pure
             (OUTPUT ISURP-RESULT ($ctx $score))
             $score
-            (f64_to_string
-                (min_f64
-                    (f64_from_string $dst)
-                    (f64_from_string 1.0))))))
+            (f64_to_string (min_f64 (f64_from_string $dst) (f64_from_string 1.0))))
+        (pure
+            (isurp-old-of $pattern $score)
+            $score
+            (f64_to_string (min_f64 (f64_from_string $dst) (f64_from_string 1.0))))
+        (pure
+            (isurp-old-of $ctx $pattern $score)
+            $score
+            (f64_to_string (min_f64 (f64_from_string $dst) (f64_from_string 1.0))))))
